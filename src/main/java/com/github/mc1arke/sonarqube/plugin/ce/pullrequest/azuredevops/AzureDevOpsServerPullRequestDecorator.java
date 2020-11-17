@@ -145,72 +145,72 @@ public class AzureDevOpsServerPullRequestDecorator implements PullRequestBuildSt
     private void handleIssue(AnalysisDetails analysisDetails, AzurePullRequestDetails azurePullRequestDetails,
                              PostAnalysisIssueVisitor.ComponentIssue issue, ArrayList<CommentThread> azureCommentThreads) {
         String filePath = analysisDetails.getSCMPathForIssue(issue).orElse(null);   
+        
+        try {
+            Integer line = issue.getIssue().getLine();
+            filePath = filePath == null || filePath.endsWith("/") ? filePath : "/" + filePath;
+            LOGGER.trace(String.format("ISSUE: key: %s ", issue.getIssue().key()));
+            LOGGER.trace(String.format("ISSUE: type: %s ", issue.getIssue().type().toString()));
+            LOGGER.trace(String.format("ISSUE: severity: %s ", issue.getIssue().severity()));
+            LOGGER.trace(String.format("ISSUE: getLocations: %s ", Objects.requireNonNull(issue.getIssue().getLocations()).toString()));
+            LOGGER.trace(String.format("ISSUE: getRuleKey: %s ", issue.getIssue().getRuleKey()));
+            LOGGER.trace(String.format("COMPONENT: getDescription: %s ", issue.getComponent().getDescription()));
+            DbIssues.Locations locate = Objects.requireNonNull(issue.getIssue().getLocations());
+            boolean threadExists = false;
+            
+            for (CommentThread azureThread : azureCommentThreads) {                    
+                LOGGER.trace(String.format("azureFilePath: %s", azureThread.getThreadContext().getFilePath()));
+                LOGGER.trace(String.format("filePath: %s (%s)", filePath == null ? "null" : filePath, azureThread.getThreadContext().getFilePath().equals(filePath)));
+                LOGGER.trace(String.format("azureLine: %d", azureThread.getThreadContext().getRightFileStart().getLine()));
+                LOGGER.trace(String.format("line: %d (%s)", line, azureThread.getThreadContext().getRightFileStart().getLine() == locate.getTextRange().getEndLine()));
 
-        if (filePath != null) {
-            try {
-                Integer line = issue.getIssue().getLine();
-                filePath = filePath.endsWith("/") ? filePath : "/" + filePath;
-                LOGGER.trace(String.format("ISSUE: key: %s ", issue.getIssue().key()));
-                LOGGER.trace(String.format("ISSUE: type: %s ", issue.getIssue().type().toString()));
-                LOGGER.trace(String.format("ISSUE: severity: %s ", issue.getIssue().severity()));
-                LOGGER.trace(String.format("ISSUE: getLocations: %s ", Objects.requireNonNull(issue.getIssue().getLocations()).toString()));
-                LOGGER.trace(String.format("ISSUE: getRuleKey: %s ", issue.getIssue().getRuleKey()));
-                LOGGER.trace(String.format("COMPONENT: getDescription: %s ", issue.getComponent().getDescription()));
-                DbIssues.Locations locate = Objects.requireNonNull(issue.getIssue().getLocations());
-                boolean threadExists = false;
-                
-                for (CommentThread azureThread : azureCommentThreads) {                    
-                    LOGGER.trace(String.format("azureFilePath: %s", azureThread.getThreadContext().getFilePath()));
-                    LOGGER.trace(String.format("filePath: %s (%s)", filePath, azureThread.getThreadContext().getFilePath().equals(filePath)));
-                    LOGGER.trace(String.format("azureLine: %d", azureThread.getThreadContext().getRightFileStart().getLine()));
-                    LOGGER.trace(String.format("line: %d (%s)", line, azureThread.getThreadContext().getRightFileStart().getLine() == locate.getTextRange().getEndLine()));
-
-                    // Check if thread already exists and close thread depending on issue status
-                    if (checkAzureThread(issue, filePath, azureThread, azurePullRequestDetails)) {
-                        threadExists = true;
-                        break;
-                    }
+                // Check if thread already exists and close thread depending on issue status
+                if (checkAzureThread(issue, filePath, azureThread, azurePullRequestDetails)) {
+                    threadExists = true;
+                    break;
                 }
-
-                if (!issue.getIssue().getStatus().equals(Issue.STATUS_OPEN)) {
-                    LOGGER.info(String.format("SKIPPED ISSUE: Issue status is %s", issue.getIssue().getStatus()));
-                    return;
-                }
-
-                if (threadExists) {
-                    LOGGER.info(String.format("SKIPPED ISSUE: %s %nFile: %s %nLine: %d %nIssue already exists in Azure",
-                            issue.getIssue().getMessage(),
-                            filePath,
-                            line));
-                    return;
-                }
-
-                String message = String.format("%s: %s ([rule](%s))%n%n[See in SonarQube](%s)",
-                        issue.getIssue().type().name(),
-                        issue.getIssue().getMessage(),
-                        analysisDetails.getRuleUrlWithRuleKey(issue.getIssue().getRuleKey().toString()),
-                        analysisDetails.getIssueUrl(issue.getIssue().key())
-                );
-
-                CommentThread thread = new CommentThread(filePath, locate, message);
-                LOGGER.info(String.format("Creating thread: %s", new ObjectMapper().writeValueAsString(thread)));
-                sendPost(
-                        getThreadApiUrl(azurePullRequestDetails),
-                        new ObjectMapper().writeValueAsString(thread),
-                        "Thread created successfully",
-                        azurePullRequestDetails.getAuthorizationHeader()
-                );
-            } catch (Exception e) {
-                LOGGER.error("Could not create thread on AzureDevOps Server", e);
-                throw new IllegalStateException("Could not create thread on AzureDevOps Server", e);
             }
-        }
+
+            if (!issue.getIssue().getStatus().equals(Issue.STATUS_OPEN)) {
+                LOGGER.info(String.format("SKIPPED ISSUE: Issue status is %s", issue.getIssue().getStatus()));
+                return;
+            }
+
+            if (threadExists) {
+                LOGGER.info(String.format("SKIPPED ISSUE: %s %nFile: %s %nLine: %d %nIssue already exists in Azure",
+                        issue.getIssue().getMessage(),
+                        filePath,
+                        line));
+                return;
+            }
+
+            String message = String.format("%s: %s ([rule](%s))%n%n[See in SonarQube](%s)",
+                    issue.getIssue().type().name(),
+                    issue.getIssue().getMessage(),
+                    analysisDetails.getRuleUrlWithRuleKey(issue.getIssue().getRuleKey().toString()),
+                    analysisDetails.getIssueUrl(issue.getIssue().key())
+            );
+
+            CommentThread thread = new CommentThread(filePath, locate, message);
+            LOGGER.info(String.format("Creating thread: %s", new ObjectMapper().writeValueAsString(thread)));
+            sendPost(
+                    getThreadApiUrl(azurePullRequestDetails),
+                    new ObjectMapper().writeValueAsString(thread),
+                    "Thread created successfully",
+                    azurePullRequestDetails.getAuthorizationHeader()
+            );
+        } catch (Exception e) {
+            LOGGER.error("Could not create thread on AzureDevOps Server", e);
+            throw new IllegalStateException("Could not create thread on AzureDevOps Server", e);
+        }        
     }
 
     private boolean checkAzureThread(PostAnalysisIssueVisitor.ComponentIssue issue, String filePath, CommentThread azureThread,
                                      AzurePullRequestDetails azurePullRequestDetails) {
         try {
-            if (azureThread.getThreadContext().getFilePath().equals(filePath)
+            // If the issue's filePath is null, the issue may have been resolved by deleting the file where the issue was found.
+            // In that case, try to match just the issue key in the thread content.
+            if ((filePath == null || azureThread.getThreadContext().getFilePath().equals(filePath))
                     && azureThread.getComments()
                     .stream()
                     .filter(c -> c.getContent().contains(issue.getIssue().key()))

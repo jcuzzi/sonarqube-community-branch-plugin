@@ -12,7 +12,6 @@ import org.sonar.api.platform.Server;
 import org.sonar.api.rule.RuleKey;
 import org.sonar.api.rules.RuleType;
 import org.sonar.ce.task.projectanalysis.component.Component;
-import org.sonar.core.issue.DefaultIssue;
 import org.sonar.db.alm.setting.ALM;
 import org.sonar.db.alm.setting.AlmSettingDto;
 import org.sonar.db.alm.setting.ProjectAlmSettingDto;
@@ -369,4 +368,14 @@ public class AzureDevOpsServerPullRequestDecoratorTest {
         assertThat(result.getPullRequestUrl()).isEqualTo(Optional.of(String.format("%s/%s/_git/%s/pullRequest/%s", wireMockRule.baseUrl(), azureProject, azureRepository, pullRequestId)));
     }
 
+    @Test
+    public void decorateQualityGateStatusDeletedFilePath() {        
+        configureTestDefaults();
+
+        when(defaultIssue.getStatus()).thenReturn(Issue.STATUS_CLOSED);
+        when(analysisDetails.getSCMPathForIssue(componentIssue)).thenReturn(Optional.empty());
+
+        DecorationResult result = pullRequestDecorator.decorateQualityGateStatus(analysisDetails, almSettingDto, projectAlmSettingDto);
+        assertThat(result.getPullRequestUrl()).isEqualTo(Optional.of(String.format("%s/%s/_git/%s/pullRequest/%s", wireMockRule.baseUrl(), azureProject, azureRepository, pullRequestId)));
+    }
 }
